@@ -176,6 +176,85 @@ and retrieve the images.
 1. Star this repo if you like it!
 
 
+## Generating Multiple Profile Images
+
+The statistics are collected for the GitHub account that owns the
+`ACCESS_TOKEN`, not necessarily for the owner of the repository where the
+workflow runs. This means an organization repository can generate images for
+one or more personal profiles if each profile owner provides a personal access
+token.
+
+For a small number of profiles, add one secret per profile and run the CLI once
+per profile in the Actions workflow. For larger or frequently changing lists,
+store the profile list as a repository variable and use a matrix job.
+
+Create repository secrets for each profile token:
+
+- `ACCESS_TOKEN_KIM`
+- `ACCESS_TOKEN_LEE`
+
+Then create a repository variable named `PROFILES` with JSON like this:
+
+``` json
+{
+  "include": [
+    { "profile": "kim", "token_secret": "ACCESS_TOKEN_KIM" },
+    { "profile": "lee", "token_secret": "ACCESS_TOKEN_LEE" }
+  ]
+}
+```
+
+Use that variable in the workflow matrix and write each profile's SVG files to
+its own directory:
+
+``` yaml
+strategy:
+  fail-fast: false
+  max-parallel: 1
+  matrix: ${{ fromJSON(vars.PROFILES) }}
+
+steps:
+  # Build and checkout steps omitted for brevity
+
+  - name: Generate images
+    run: |
+      mkdir -p "profiles/${PROFILE}"
+      ./zig-out/bin/github-stats
+    env:
+      PROFILE: ${{ matrix.profile }}
+      ACCESS_TOKEN: ${{ secrets[matrix.token_secret] }}
+      OVERVIEW_OUTPUT_FILE: profiles/${{ matrix.profile }}/overview.svg
+      LANGUAGES_OUTPUT_FILE: profiles/${{ matrix.profile }}/languages.svg
+      EXCLUDE_REPOS: ${{ secrets.EXCLUDE_REPOS }}
+      EXCLUDE_LANGS: ${{ secrets.EXCLUDE_LANGS }}
+      EXCLUDE_PRIVATE: "false"
+      SILENT: "true"
+      MAX_RETRIES: 5
+```
+
+The generated branch will contain files like:
+
+``` text
+profiles/kim/overview.svg
+profiles/kim/languages.svg
+profiles/lee/overview.svg
+profiles/lee/languages.svg
+```
+
+Each personal profile README can then reference the SVG files from the
+organization repository:
+
+``` markdown
+![](https://github.com/[ORG]/github-stats/blob/generated/profiles/kim/overview.svg#gh-dark-mode-only)
+![](https://github.com/[ORG]/github-stats/blob/generated/profiles/kim/overview.svg#gh-light-mode-only)
+![](https://github.com/[ORG]/github-stats/blob/generated/profiles/kim/languages.svg#gh-dark-mode-only)
+![](https://github.com/[ORG]/github-stats/blob/generated/profiles/kim/languages.svg#gh-light-mode-only)
+```
+
+Use simple profile directory names, such as lowercase letters, numbers, and
+hyphens, because the `profile` value becomes part of the generated file path.
+
+
 ## Analyzing the Data
 
 Using the `github-stats` CLI (available on the
